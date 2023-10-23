@@ -80,3 +80,10 @@ kalloc(void)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
 }
+
+// Returns the number of bytes of free memory.
+int
+kfreemem(void)
+{
+  return 0;
+}
