@@ -85,5 +85,14 @@ kalloc(void)
 int
 kfreemem(void)
 {
-  return 0;
+  struct run *r;
+  int npage = 0;
+  acquire(&kmem.lock);
+  r = kmem.freelist;
+  while (r) {
+    r = r->next;
+    npage++;
+  }
+  release(&kmem.lock);
+  return npage * PGSIZE;
 }

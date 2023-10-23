@@ -170,7 +170,13 @@ freeproc(struct proc *p)
 int
 nproc(void)
 {
-  return 0;
+  int cnt = 0;
+  for (int i = 0; i < NPROC; i++) {
+    if (proc[i].state != UNUSED) {
+      cnt++;
+    }
+  }
+  return cnt;
 }
 
 // Create a user page table for a given process,
