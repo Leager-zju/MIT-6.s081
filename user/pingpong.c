@@ -4,7 +4,8 @@
 #define ONEBYTE sizeof(char)
 
 int
-main(int argc, char *argv[]) {
+main(int argc, char *argv[])
+{
   int fd[2]; // fd[0] for reading, while fd[1] for writing
   if (pipe(fd) < 0) {
     fprintf(2, "pingpong: pipe failed\n");

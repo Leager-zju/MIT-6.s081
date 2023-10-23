@@ -3,7 +3,8 @@
 #include "user/user.h"
 
 int
-main(int argc, char *argv[]) {
+main(int argc, char *argv[])
+{
   // find . b | xargs grep hello
   char *cmd = argv[1];
   char *new_args[MAXARG];

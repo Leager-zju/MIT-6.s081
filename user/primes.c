@@ -2,7 +2,8 @@
 #include "user/user.h"
 
 void
-createNewProc(int p, int *left_fd) {
+createNewProc(int p, int *left_fd)
+{
   int right_fd[2];
   if (pipe(right_fd) < 0) {
     fprintf(2, "primes: pipe failed\n");
@@ -44,7 +45,8 @@ createNewProc(int p, int *left_fd) {
 }
 
 int
-main(int argc, char *argv[]) {
+main(int argc, char *argv[])
+{
   int fd[2];
   if (pipe(fd) < 0) {
     fprintf(2, "primes: pipe failed\n");

@@ -9,7 +9,8 @@
 int match(char*, char*);
 
 void
-searchFile(char *dir, char *pattern) {
+searchFile(char *dir, char *pattern)
+{
   int fd; // point to the directory
   if ((fd = open(dir, 0)) < 0){
     fprintf(STDERR, "find: cannot open %s\n", dir);
@@ -57,7 +58,8 @@ searchFile(char *dir, char *pattern) {
 }
 
 int
-main(int argc, char *argv[]) {
+main(int argc, char *argv[])
+{
   if (argc <= 2) {
     fprintf(2, "Usage: find dir files...");
     exit(1);
