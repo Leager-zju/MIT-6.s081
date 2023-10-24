@@ -2890,6 +2890,7 @@ main(int argc, char *argv[])
       int fail = 0;
       int free0 = countfree();
       for (struct test *t = tests; t->s != 0; t++) {
+        printf("run %s...\n", t->s);
         if(!run(t->f, t->s)){
           fail = 1;
           break;

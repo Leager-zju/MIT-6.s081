@@ -80,7 +80,32 @@ sys_sleep(void)
 int
 sys_pgaccess(void)
 {
-  // lab pgtbl: your code here.
+  uint64 vba; // virtual base address
+  int npages;
+  uint64 vp;
+  if (argaddr(0, &vba) < 0 || argint(1, &npages) < 0 || argaddr(2, &vp) < 0) {
+    return -1;
+  }
+
+  vba = PGROUNDDOWN(vba);
+  if (PGROUNDDOWN(vba) + npages*PGSIZE > MAXVA) {
+    return -1;
+  }
+
+  unsigned int abits = 0;
+  struct proc* p = myproc();
+  pagetable_t pagetable = p->pagetable;
+
+  for (int i = 0; i < npages; i++) {
+    uint64 va = vba + i*PGSIZE;
+    pte_t* pte = walk(pagetable, va, 0);
+    if (*pte & PTE_A) {
+      abits |= 1 << i;
+      *pte &= ~PTE_A;
+    }
+  }
+
+  copyout(pagetable, vp, (char*)&abits, sizeof(abits));
   return 0;
 }
 #endif
