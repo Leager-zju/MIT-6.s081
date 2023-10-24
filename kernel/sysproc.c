@@ -88,7 +88,7 @@ sys_pgaccess(void)
   }
 
   vba = PGROUNDDOWN(vba);
-  if (PGROUNDDOWN(vba) + npages*PGSIZE > MAXVA) {
+  if (vba + npages*PGSIZE > MAXVA) {
     return -1;
   }
 
