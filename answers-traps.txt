@@ -1,0 +1,13 @@
+1. a2
+
+2. 0x000000000000000e and 0x0000000000000000
+
+3. 0x34
+
+4. 0x30
+
+5. since 57616 is 0xe110, and 0x00646c72 in ascii is "rld\0", so the print result is "He110 World".
+
+If the RISC-V were instead big-endian, the 'i' will be set as 4321, that is, 0x10e.
+
+6. the printf function will load register 'a2' as the parameter "y=%d". 

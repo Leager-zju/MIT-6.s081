@@ -52,7 +52,6 @@ usertrap(void)
   
   if(r_scause() == 8){
     // system call
-
     if(p->killed)
       exit(-1);
 
@@ -77,8 +76,23 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
+  if(which_dev == 2) {
+    if (p->timeout && !p->in_handler) {
+      p->tick++;
+      if (p->tick >= p->timeout) {
+        p->tick = 0;
+        p->in_handler = 1;
+        // uint64 addr;
+        // argaddr(1, &addr);
+        // int value;
+        // copyin(p->pagetable, (char*)&value, addr, sizeof(int));
+        // printf("\ninterrupt at address: %p, sp: %p\n", p->trapframe->epc, p->trapframe->sp);
+        memmove(&p->trapframe_copy, p->trapframe, sizeof(struct trapframe));
+        p->trapframe->epc = p->handler; // p->trapframe->epc should be set as the handler address
+      }
+    }
     yield();
+  }
 
   usertrapret();
 }

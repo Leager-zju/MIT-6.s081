@@ -1,0 +1,14 @@
+{
+  "files.associations": {
+    "*.S": "lldb.disassembly",
+    "stat.h": "c",
+    "types.h": "c",
+    "user.h": "c",
+    "param.h": "c",
+    "sysinfo.h": "c",
+    "defs.h": "c",
+    "printf.h": "c",
+    "riscv.h": "c"
+  },
+  "C_Cpp.errorSquiggles": "enabled"
+}

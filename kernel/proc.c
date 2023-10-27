@@ -141,6 +141,13 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+  // init tick handler
+  p->timeout = 0;
+  p->tick = 0;
+  p->handler = 0;
+  p->in_handler = 0;
+  memset(&p->trapframe_copy, 0, sizeof(struct trapframe));
+
   return p;
 }
 
@@ -164,6 +171,12 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+
+  p->timeout = 0;
+  p->tick = 0;
+  p->handler = 0;
+  p->in_handler = 0;
+  memset(&p->trapframe_copy, 0, sizeof(struct trapframe));
 }
 
 // Create a user page table for a given process,
