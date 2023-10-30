@@ -47,7 +47,7 @@ pipealloc(struct file **f0, struct file **f1)
 
  bad:
   if(pi)
-    kfree((char*)pi);
+    unpin((char*)pi);
   if(*f0)
     fileclose(*f0);
   if(*f1)
@@ -68,7 +68,7 @@ pipeclose(struct pipe *pi, int writable)
   }
   if(pi->readopen == 0 && pi->writeopen == 0){
     release(&pi->lock);
-    kfree((char*)pi);
+    unpin((char*)pi);
   } else
     release(&pi->lock);
 }

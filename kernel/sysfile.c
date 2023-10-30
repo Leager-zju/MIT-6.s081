@@ -444,13 +444,13 @@ sys_exec(void)
   int ret = exec(path, argv);
 
   for(i = 0; i < NELEM(argv) && argv[i] != 0; i++)
-    kfree(argv[i]);
+    unpin(argv[i]);
 
   return ret;
 
  bad:
   for(i = 0; i < NELEM(argv) && argv[i] != 0; i++)
-    kfree(argv[i]);
+    unpin(argv[i]);
   return -1;
 }
 
@@ -472,6 +472,7 @@ sys_pipe(void)
       p->ofile[fd0] = 0;
     fileclose(rf);
     fileclose(wf);
+    
     return -1;
   }
   if(copyout(p->pagetable, fdarray, (char*)&fd0, sizeof(fd0)) < 0 ||

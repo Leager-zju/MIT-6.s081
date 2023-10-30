@@ -65,6 +65,43 @@ usertrap(void)
     intr_on();
 
     syscall();
+  } else if (r_scause() == 15) {
+    // When a page-fault occurs on a COW page,
+    // caused by writing a page with PTE_W is 0
+
+    if(p->killed)
+      exit(-1);
+      
+    uint64 start_va = PGROUNDDOWN(r_stval());     // get the virtual address the error occurred
+    if (start_va >= MAXVA)
+      exit(-1);
+
+    pte_t* pte = walk(p->pagetable, start_va, 0); // get the page table entry
+    if (pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0 || (*pte & PTE_COW) == 0)
+      panic("invalid pte");
+
+    uint64 pa = PTE2PA(*pte);
+    if (exown((void*)pa)) {
+      *pte &= ~PTE_COW;
+      *pte |= PTE_W;
+    } else {
+      char* npa = (char*)kalloc();
+      if(npa == 0){
+        // If a COW page fault occurs and there's no free memory,
+        // the process should be killed.
+        acquire(&p->lock);
+        p->killed = 1;
+        release(&p->lock);
+      } else {
+        memmove(npa, (char*)pa, PGSIZE);
+        
+        *pte &= ~PTE_COW;
+        *pte |= PTE_W;
+        *pte = PTE_FLAGS(*pte) | PA2PTE(npa);
+
+        unpin((void*)pa);
+      }
+    }
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {

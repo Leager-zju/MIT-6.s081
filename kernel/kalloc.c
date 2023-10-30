@@ -9,10 +9,14 @@
 #include "riscv.h"
 #include "defs.h"
 
+#define NPAGES (PHYSTOP-KERNBASE)/PGSIZE
+
 void freerange(void *pa_start, void *pa_end);
 
 extern char end[]; // first address after kernel.
                    // defined by kernel.ld.
+
+static uint8 ref_count[NPAGES];
 
 struct run {
   struct run *next;
@@ -23,10 +27,74 @@ struct {
   struct run *freelist;
 } kmem;
 
+// arg start_pa must be PGROUNDed
+uint64
+page_idx(void* start_pa)
+{
+  uint64 idx = ((uint64)start_pa-KERNBASE) >> 12;
+  if (idx >= NPAGES) {
+    return -1;
+  }
+  return idx;
+}
+
+// plus the reference count of page at pa
+void
+pin(void* pa)
+{
+  void* start_pa = (void*)PGROUNDDOWN((uint64)pa);
+  uint64 idx = page_idx(start_pa);
+  if (idx == -1) {
+    panic("invalid page\n");
+  }
+
+  ref_count[idx]++;
+}
+
+// minus the reference count of page at pa
+// if the count is 0 after unpin, free it
+void
+unpin(void* pa)
+{
+  void* start_pa = (void*)PGROUNDDOWN((uint64)pa);
+  uint64 idx = page_idx(start_pa);
+  if (idx == -1) {
+    panic("invalid page\n");
+  }
+
+  if (--ref_count[idx] == 0) {
+    kfree(start_pa);
+  }
+}
+
+uint8
+getcount(void* pa)
+{
+  void* start_pa = (void*)PGROUNDDOWN((uint64)pa);
+  uint64 idx = page_idx(start_pa);
+  if (idx == -1) {
+    panic("invalid page\n");
+  }
+  return ref_count[idx];
+}
+
+int
+pinned(void* pa)
+{
+  return getcount(pa) > 0;
+}
+
+int
+exown(void* pa)
+{
+  return getcount(pa) == 1;
+}
+
 void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
+  memset(ref_count, 0, sizeof(ref_count));
   freerange(end, (void*)PHYSTOP);
 }
 
@@ -76,7 +144,9 @@ kalloc(void)
     kmem.freelist = r->next;
   release(&kmem.lock);
 
-  if(r)
+  if(r){
     memset((char*)r, 5, PGSIZE); // fill with junk
+    pin((void*)r);
+  }
   return (void*)r;
 }

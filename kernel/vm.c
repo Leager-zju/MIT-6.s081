@@ -180,7 +180,7 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
       panic("uvmunmap: not a leaf");
     if(do_free){
       uint64 pa = PTE2PA(*pte);
-      kfree((void*)pa);
+      unpin((void*)pa);
     }
     *pte = 0;
   }
@@ -235,7 +235,7 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
     }
     memset(mem, 0, PGSIZE);
     if(mappages(pagetable, a, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
-      kfree(mem);
+      unpin(mem);
       uvmdealloc(pagetable, a, oldsz);
       return 0;
     }
@@ -278,7 +278,7 @@ freewalk(pagetable_t pagetable)
       panic("freewalk: leaf");
     }
   }
-  kfree((void*)pagetable);
+  unpin((void*)pagetable);
 }
 
 // Free user memory pages,
@@ -291,40 +291,35 @@ uvmfree(pagetable_t pagetable, uint64 sz)
   freewalk(pagetable);
 }
 
-// Given a parent process's page table, copy
-// its memory into a child's page table.
-// Copies both the page table and the
-// physical memory.
-// returns 0 on success, -1 on failure.
-// frees any allocated pages on failure.
+// map the 'old' physical pages into the 'new',
+// instead of allocating new pages.
+// Clear PTE_W in the PTEs of both child and parent.
 int
 uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 {
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
-    if((pte = walk(old, i, 0)) == 0)
+    if ((pte = walk(old, i, 0)) == 0)
       panic("uvmcopy: pte should exist");
-    if((*pte & PTE_V) == 0)
+    if ((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
+    
     pa = PTE2PA(*pte);
+    *pte &= ~PTE_W;   // clear PTE_W
+    *pte |= PTE_COW;  // add PTE_COW
+
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
-      goto err;
+    if (mappages(new, i, PGSIZE, pa, flags) != 0) {
+      uvmunmap(new, 0, i / PGSIZE, 0);
+      return -1;
     }
+
+    pin((void*)pa);
   }
   return 0;
-
- err:
-  uvmunmap(new, 0, i / PGSIZE, 1);
-  return -1;
 }
 
 // mark a PTE invalid for user access.
@@ -346,11 +341,40 @@ uvmclear(pagetable_t pagetable, uint64 va)
 int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
+  pte_t *pte;
   uint64 n, va0, pa0;
-
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
-    pa0 = walkaddr(pagetable, va0);
+    if (va0 >= MAXVA)
+      return -1;
+
+    pte = walk(pagetable, va0, 0);
+
+    if (pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0)
+      return -1;
+
+    pa0 = PTE2PA(*pte); // dst pa
+    if (*pte & PTE_COW) {
+      // create a new page, copy the old page into new page
+      // then update the pte
+      if (exown((void*)pa0)) {
+        *pte &= ~PTE_COW;
+        *pte |= PTE_W;
+      } else {
+        char* npa = (char*)kalloc();
+        if(npa){
+          memmove(npa, (char*)pa0, PGSIZE);
+        
+          *pte &= ~PTE_COW;
+          *pte |= PTE_W;
+          *pte = PTE_FLAGS(*pte) | PA2PTE(npa);
+
+          unpin((void*)pa0);
+        } // else, npa == 0, then pa0 = 0, return -1
+        pa0 = (uint64)npa;
+      }
+    }
+    
     if(pa0 == 0)
       return -1;
     n = PGSIZE - (dstva - va0);
