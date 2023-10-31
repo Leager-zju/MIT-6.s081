@@ -1,0 +1,1 @@
+A single thread can ensure that all put operations are serialized. However, if the lock is not locked, the two threads will conflict on the put operation of the same entry.
