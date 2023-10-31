@@ -1,0 +1,7 @@
+{
+  "files.associations": {
+    "*.S": "lldb.disassembly",
+    "time.h": "c",
+    "pthread.h": "c"
+  }
+}
