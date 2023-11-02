@@ -316,6 +316,7 @@ sys_open(void)
     }
   }
 
+  // printf("get %s, mod %p => inode %d, type %d, ref %d\n", path, omode, ip->inum, ip->type, ip->ref);
   if(ip->type == T_DEVICE && (ip->major < 0 || ip->major >= NDEV)){
     iunlockput(ip);
     end_op();
@@ -334,6 +335,34 @@ sys_open(void)
     f->type = FD_DEVICE;
     f->major = ip->major;
   } else {
+    if (ip->type == T_SYMLINK && (omode & O_NOFOLLOW) == 0) {
+      char next[MAXPATH];
+      uint threshold = 10;
+      while (threshold) {
+        if (readi(ip, 0, (uint64)next, 0, MAXPATH) != MAXPATH) {
+          panic("link error");
+        }
+        iunlockput(ip);
+
+        if ((ip = namei(next)) == 0) {
+          end_op();
+          return -1;
+        }
+
+        ilock(ip);
+        // printf("get %s => inode %d, type %d, ref %d\n", next, omode, ip->inum, ip->type, ip->ref);
+        if (ip->type != T_SYMLINK) {
+          break;
+        }
+        threshold--;
+      }
+
+      if (threshold <= 0) {
+        iunlockput(ip);
+        end_op();
+        return -1;
+      }
+    }
     f->type = FD_INODE;
     f->off = 0;
   }
@@ -482,5 +511,30 @@ sys_pipe(void)
     fileclose(wf);
     return -1;
   }
+  return 0;
+}
+
+
+// Create the path with content target in block data.
+uint64
+sys_symlink(void)
+{
+  char target[MAXPATH], path[MAXPATH];
+  struct inode* ip;
+
+  if (argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0) {
+    return -1;
+  }
+  begin_op();
+  {
+    if ((ip = create(path, T_FILE, 0, 0)) == 0) {
+      end_op();
+      return -1;
+    }
+    ip->type = T_SYMLINK;
+    writei(ip, 0, (uint64)target, 0, MAXPATH);
+    iunlockput(ip);
+  }
+  end_op();
   return 0;
 }

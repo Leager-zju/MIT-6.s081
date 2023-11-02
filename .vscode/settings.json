@@ -1,0 +1,6 @@
+{
+  "files.associations": {
+    "*.S": "lldb.disassembly",
+    "netfwd": "c"
+  }
+}
