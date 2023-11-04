@@ -5,6 +5,10 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "fs.h"
+#include "sleeplock.h"
+#include "file.h"
+#include "fcntl.h"
 
 struct cpu cpus[NCPU];
 
@@ -135,6 +139,9 @@ found:
     return 0;
   }
 
+  memset(&p->vma, 0, sizeof(p->vma));
+  p->max_VMA = PGROUNDUP(MAXVA) - PGSIZE*2;
+
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
@@ -164,6 +171,8 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  memset(&p->vma, 0, sizeof(p->vma));
+  p->max_VMA = 0;
 }
 
 // Create a user page table for a given process,
@@ -287,6 +296,14 @@ fork(void)
     release(&np->lock);
     return -1;
   }
+
+  for (int i = 0; i < NVMA; i++) {
+    np->vma[i] = p->vma[i];
+    if (np->vma[i].f) {
+      np->vma[i].f->ref++;
+    }
+    np->max_VMA = p->max_VMA;
+  }
   np->sz = p->sz;
 
   // copy saved user registers.
@@ -352,6 +369,14 @@ exit(int status)
       p->ofile[fd] = 0;
     }
   }
+
+  for (int i = 0; i < NVMA; i++) {
+    struct vma* vma = &p->vma[i];
+    if (vma->valid) {
+      vmaunmap(p, vma, vma->va, vma->length);
+    }
+  }
+  p->max_VMA = 0;
 
   begin_op();
   iput(p->cwd);
@@ -652,5 +677,38 @@ procdump(void)
       state = "???";
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
+  }
+}
+
+void
+vmaunmap(struct proc *p, struct vma *vma, uint64 addr, uint64 length)
+{
+  begin_op();
+  ilock(vma->f->ip);
+  for (uint64 off = 0; off < PGROUNDUP(length); off += PGSIZE) {
+    uint64 va = addr + off;
+    uint64 pa;
+    if ((pa = walkaddr(p->pagetable, va))) {
+      if (vma->flags & MAP_SHARED) {
+        if (writei(vma->f->ip, 1, va, vma->offset + va - vma->va, PGSIZE) < PGSIZE) {
+          panic("write back");
+        }
+      }
+      uvmunmap(p->pagetable, va, 1, 1);
+    }
+  }
+  iunlock(vma->f->ip);
+  end_op();
+  
+  if (addr > vma->va) {
+    vma->length = addr - vma->va;
+  } else {
+    vma->length -= length;
+    vma->va += length;
+    vma->offset += length;
+  }
+  if (vma->length == 0) {
+    fileclose(vma->f);
+    memset(vma, 0, sizeof(struct vma));
   }
 }

@@ -484,3 +484,102 @@ sys_pipe(void)
   }
   return 0;
 }
+
+// void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset);
+// mmap can be called in many ways,
+//    but this lab requires only a subset of its features relevant to memory-mapping a file.
+// You can assume that addr will always be zero,
+//    meaning that the kernel should decide the virtual address at which to map the file.
+//    mmap returns that address, or 0xffffffffffffffff if it fails.
+// length is the number of bytes to map; it might not be the same as the file's length.
+// prot indicates whether the memory should be mapped readable, writeable, and/or executable;
+//    you can assume that prot is PROT_READ or PROT_WRITE or both.
+// flags will be either MAP_SHARED, meaning that modifications to the mapped memory should be
+//    written back to the file, or MAP_PRIVATE, meaning that they should not.
+//    You don't have to implement any other bits in flags.
+// fd is the open file descriptor of the file to map.
+// You can assume offset is zero (it's the starting point in the file at which to map).
+// It's OK if processes that map the same MAP_SHARED file do not share physical pages.
+uint64
+sys_mmap(void)
+{
+  uint64 addr;
+  int length;
+  int prot;
+  int flags;
+  int fd;
+  struct file *f;
+  int offset;
+  if (argaddr(0, &addr) < 0 || argint(1, &length) < 0 || argint(2, &prot) < 0 ||
+      argint(3, &flags) < 0 || argfd(4, &fd, &f) < 0 || argint(5, &offset) < 0) {
+    return -1;
+  }
+
+  if (!f->readable && (prot & PROT_READ)) {
+    return -1;
+  }
+
+  if (!f->writable && (prot & PROT_WRITE) && (flags & MAP_PRIVATE) == 0) {
+    return -1;
+  }
+
+  uint64 va = -1;
+  struct proc *p = myproc();
+  struct vma *vma;
+  for (int i = 0; i < NVMA; i++) {
+    vma = &p->vma[i];
+    if (!vma->valid) {
+      vma->valid = 1;
+
+      if (addr == 0) {
+        p->max_VMA -= PGROUNDUP(length);
+        vma->va = va = p->max_VMA;
+      } else {
+        vma->va = va = addr;
+      }
+
+      vma->length = length;
+      vma->prot = prot;
+      vma->flags = flags;
+      vma->fd = fd;
+      vma->f = filedup(f);
+      vma->offset = offset;
+      break;
+    }
+  }
+  return va;
+}
+
+// int munmap(void *addr, size_t length);
+// munmap(addr, length) should remove mmap mappings in the indicated address range.
+// If the process has modified the memory and has it mapped MAP_SHARED,
+//    the modifications should first be written to the file.
+// An munmap call might cover only a portion of an mmap-ed region,
+//    but you can assume that it will either unmap at the start, or at the end,
+//    or the whole region (but not punch a hole in the middle of a region).
+uint64
+sys_munmap(void)
+{
+  uint64 addr;
+  int length;
+
+  if (argaddr(0, &addr) < 0 || argint(1, &length) < 0) {
+    return -1;
+  }
+
+  struct proc *p = myproc();
+  struct vma *vma = 0; // [vma->va, vma->va+PGROUNDUP(vma->length)]
+  for (int i = 0; i < NVMA; i++) {
+    if (p->vma[i].valid && p->vma[i].va <= addr && p->vma[i].va + PGROUNDUP(p->vma[i].length) > addr) {
+      vma = &p->vma[i];
+      break;
+    }
+  }
+
+  if (vma) {
+    vmaunmap(p, vma, addr, length);
+    return 0;
+  }
+  
+  return -1;
+}

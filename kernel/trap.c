@@ -5,6 +5,10 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "fcntl.h"
+#include "sleeplock.h"
+#include "fs.h"
+#include "file.h"
 
 struct spinlock tickslock;
 uint ticks;
@@ -65,6 +69,62 @@ usertrap(void)
     intr_on();
 
     syscall();
+  } else if (r_scause() == 13 || r_scause() == 15) {
+    // page fault occured by reading or writing a mmap virtual address
+    // that hasn't been allocated any physical page
+    if(p->killed)
+      exit(-1);
+
+    uint64 va = PGROUNDDOWN(r_stval());
+    if (va >= MAXVA)
+      exit(-1);
+
+    struct vma *vma = 0;
+    for (int i = 0; i < NVMA; i++) {
+      if (p->vma[i].valid && p->vma[i].va <= va && p->vma[i].va + PGROUNDUP(p->vma[i].length) > va) {
+        vma = &p->vma[i];
+        break;
+      }
+    }
+
+    if (!vma) {
+      exit(-1);
+    }
+    
+    int flags = PTE_U;
+    if (vma->prot & PROT_READ) {
+      flags |= PTE_R;
+    }
+    if (vma->prot & PROT_WRITE) {
+      flags |= PTE_W;
+    }
+    if (vma->prot & PROT_EXEC) {
+      flags |= PTE_X;
+    }
+
+    uint64 pa;
+    uint64 following = vma->va - va + PGROUNDUP(vma->length);
+    ilock(vma->f->ip);
+    for (uint64 off = 0; off < following; off += PGSIZE) {
+      // 如果当前地址已有映射，跳过
+      if ((pa = walkaddr(p->pagetable, va+off)) != 0) {
+        continue;
+      }
+      // 无可用内存，报错
+      if ((pa = (uint64)kalloc()) == 0) {
+        panic("no free memory");
+      }
+
+      // 清空数据，并建立映射
+      memset((void*)pa, 0, PGSIZE);
+      if (mappages(p->pagetable, va+off, PGSIZE, pa, flags) != 0) {
+        panic("cannot map");
+      }
+      if (readi(vma->f->ip, 0, pa, vma->offset+off, PGSIZE) == -1) {
+        panic("read file failed");
+      }
+    }
+    iunlock(vma->f->ip);
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
